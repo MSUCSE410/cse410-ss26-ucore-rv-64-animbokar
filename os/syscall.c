@@ -35,14 +35,17 @@ uint64 sys_sched_yield()
 uint64 sys_gettimeofday(TimeVal *val, int _tz) // TODO: implement sys_gettimeofday in pagetable. (VA to PA)
 {
 	// YOUR CODE
-	val->sec = 0;
-	val->usec = 0;
+	// val->sec = 0;
+	// val->usec = 0;
 
 	/* The code in `ch3` will leads to memory bugs*/
-
-	// uint64 cycle = get_cycle();
-	// val->sec = cycle / CPU_FREQ;
-	// val->usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
+	struct proc *p = curr_proc();
+	uint64 pa = useraddr(p->pagetable, (uint64)val);
+	if (pa == 0) return -1;
+	TimeVal *kval = (TimeVal *)pa;
+	uint64 cycle = get_cycle();
+	val->sec = cycle / CPU_FREQ;
+	val->usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
 	return 0;
 }
 
@@ -52,6 +55,56 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz) // TODO: implement sys_gettimeofd
 /*
 * LAB1: you may need to define sys_task_info here
 */
+uint64 sys_task_info(uint64 ti_va) {
+	struct proc *p = curr_proc();
+	uint64 pa = useraddr(p->pagetable, ti_va);
+	if (pa == 0) return -1;
+	struct TaskInfo *ti = (struct TaskInfo *)pa;
+	ti->status = Running;
+	memmove(ti->syscall_times, p->syscall_times, sizeof(ti->syscall_times));
+	ti->time = get_cycle() / (CPU_FREQ / 1000) - p->start_time;
+	return 0;
+}
+
+uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd) {
+	if (start % PGSIZE != 0) return -1;
+	if (len == 0) return 0;
+	if ((port & ~0x7) != 0) return -1;
+	if ((port & 0x7) == 0) return -1;
+	struct proc *p = curr_proc();
+	uint64 end = PGROUNDUP(start + len);
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) != 0)
+			return -1;
+	}
+	int perm = PTE_U;
+	if (port & 0x1) perm |= PTE_R;
+	if (port & 0x2) perm |= PTE_W;
+	if (port & 0x4) perm |= PTE_X;
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		void *mem = kalloc();
+		if (mem == 0) return -1;
+		memset(mem, 0, PGSIZE);
+		if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0) {
+			kfree(mem);
+			return -1;
+		}
+	}
+	return 0;
+}
+
+uint64 sys_munmap(uint64 start, uint64 len) {
+	if (start % PGSIZE != 0) return -1;
+	if (len == 0) return 0;
+	uint64 end = PGROUNDUP(start + len);
+	struct proc *p = curr_proc();
+	for (uint64 va = start; va < end; va += PGSIZE) {
+		if (walkaddr(p->pagetable, va) == 0)
+			return -1;
+	}
+	uvmunmap(p->pagetable, start, (end - start) / PGSIZE, 1);
+	return 0;
+}
 
 extern char trap_page[];
 
@@ -66,6 +119,8 @@ void syscall()
 	/*
 	* LAB1: you may need to update syscall counter for task info here
 	*/
+	curr_proc()->syscall_times[id]++;
+	
 	switch (id) {
 	case SYS_write:
 		ret = sys_write(args[0], args[1], args[2]);
@@ -82,6 +137,15 @@ void syscall()
 	/*
 	* LAB1: you may need to add SYS_taskinfo case here
 	*/
+	case SYS_task_info:
+		ret = sys_task_info(args[0]);
+		break;
+	case SYS_mmap:
+		ret = sys_mmap(args[0], args[1], (int)args[2], (int)args[3], (int)args[4]);
+		break;
+	case SYS_munmap:
+		ret = sys_munmap(args[0], args[1]);
+		break;
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);
