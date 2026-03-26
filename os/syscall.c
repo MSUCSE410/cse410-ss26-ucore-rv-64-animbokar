@@ -44,8 +44,8 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz) // TODO: implement sys_gettimeofd
 	if (pa == 0) return -1;
 	TimeVal *kval = (TimeVal *)pa;
 	uint64 cycle = get_cycle();
-	val->sec = cycle / CPU_FREQ;
-	val->usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
+	kval->sec = cycle / CPU_FREQ;
+	kval->usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
 	return 0;
 }
 
@@ -145,6 +145,9 @@ void syscall()
 		break;
 	case SYS_munmap:
 		ret = sys_munmap(args[0], args[1]);
+		break;
+	case SYS_getpid:
+		ret = curr_proc()->pid;
 		break;
 	default:
 		ret = -1;

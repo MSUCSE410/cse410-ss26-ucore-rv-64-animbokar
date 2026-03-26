@@ -49,7 +49,10 @@ struct proc {
 * LAB1: you may need to define struct for TaskInfo here
 */
 typedef enum {
-    Running = 0,
+     UnInit = 0,
+    Ready,
+    Running,
+    Exited,
 } TaskStatus;
 
 struct TaskInfo {
