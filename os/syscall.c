@@ -119,7 +119,7 @@ void syscall()
 	/*
 	* LAB1: you may need to update syscall counter for task info here
 	*/
-	curr_proc()->syscall_times[id]++;
+	curr_proc()->syscall_times[id]++; 
 	
 	switch (id) {
 	case SYS_write:
