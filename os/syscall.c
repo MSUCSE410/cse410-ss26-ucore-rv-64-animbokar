@@ -95,16 +95,60 @@ uint64 sys_wait(int pid, uint64 va)
 uint64 sys_spawn(uint64 va)
 {
 	// TODO: your job is to complete the sys call
-	return -1;
+	struct proc *p = curr_proc();
+	char name[200];
+	copyinstr(p->pagetable, name, va, 200);
+	return spawn(name);
+	// return -1;
 }
 
 uint64 sys_set_priority(long long prio){
     // TODO: your job is to complete the sys call
-    return -1;
+	return set_priority(prio);
+    //return -1;
 }
 
 
 extern char trap_page[];
+uint64 sys_mmap(uint64 start, uint64 len, int port, int flag, int fd) {
+	if (start % PGSIZE != 0) return -1;
+    if (len == 0) return 0;
+    if ((port & ~0x7) != 0) return -1;
+    if ((port & 0x7) == 0) return -1;
+    struct proc *p = curr_proc();
+    uint64 end = PGROUNDUP(start + len);
+    for (uint64 va = start; va < end; va += PGSIZE) {
+    	if (walkaddr(p->pagetable, va) != 0)
+        	return -1;
+	}
+	int perm = PTE_U;
+    if (port & 0x1) perm |= PTE_R;
+    if (port & 0x2) perm |= PTE_W;
+    if (port & 0x4) perm |= PTE_X;
+    for (uint64 va = start; va < end; va += PGSIZE) {
+        void *mem = kalloc();
+        if (mem == 0) return -1;
+        memset(mem, 0, PGSIZE);
+        if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0) {
+            kfree(mem);
+            return -1;
+        }
+    }
+    return 0;
+
+}
+uint64 sys_munmap(uint64 start, uint64 len) {
+    if (start % PGSIZE != 0) return -1;
+    if (len == 0) return 0;
+    uint64 end = PGROUNDUP(start + len);
+    struct proc *p = curr_proc();
+    for (uint64 va = start; va < end; va += PGSIZE) {
+        if (walkaddr(p->pagetable, va) == 0)
+            return -1;
+    }
+    uvmunmap(p->pagetable, start, (end - start) / PGSIZE, 1);
+    return 0;
+}
 
 void syscall()
 {
@@ -148,6 +192,16 @@ void syscall()
 	case SYS_spawn:
 		ret = sys_spawn(args[0]);
 		break;
+	case SYS_mmap:
+		ret = sys_mmap(args[0], args[1], (int)args[2], (int)args[3], (int)args[4]);
+		break;
+	case SYS_munmap:
+		ret = sys_munmap(args[0], args[1]);
+		break;
+	case SYS_setpriority:
+        ret = sys_set_priority((long long)args[0]);
+        break;
+
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);

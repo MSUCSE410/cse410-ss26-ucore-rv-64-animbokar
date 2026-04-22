@@ -47,19 +47,26 @@ int allocpid()
 
 struct proc *fetch_task()
 {
-	int index = pop_queue(&task_queue);
-	if (index < 0) {
-		debugf("No task to fetch\n");
-		return NULL;
+	#define BIG_STRIDE 65536
+	struct proc *p;
+	struct proc *min_p = NULL;
+for (p = pool; p < &pool[NPROC]; p++) {
+		if (p->state == RUNNABLE) {
+			if (min_p == NULL || p->stride < min_p->stride) {
+				min_p = p;
+		}
 	}
-	debugf("fetch task %d(pid=%d) to task queue\n", index, pool[index].pid);
-	return pool + index;
+	}
+	if (min_p != NULL) {
+		min_p->stride += BIG_STRIDE / min_p->priority;
+	}
+	return min_p;
 }
 
 void add_task(struct proc *p)
 {
-	push_queue(&task_queue, p - pool);
-	debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
+	// push_queue(&task_queue, p - pool);
+	// debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
 }
 
 // Look in the process table for an UNUSED proc.
@@ -83,6 +90,8 @@ found:
 	p->max_page = 0;
 	p->parent = NULL;
 	p->exit_code = 0;
+	p->stride = 0;
+	p->priority = 16;
 	p->pagetable = uvmcreate((uint64)p->trapframe);
 	memset(&p->context, 0, sizeof(p->context));
 	memset((void *)p->kstack, 0, KSTACK_SIZE);
@@ -163,6 +172,34 @@ void freeproc(struct proc *p)
 		freepagetable(p->pagetable, p->max_page);
 	p->pagetable = 0;
 	p->state = UNUSED;
+}
+
+int set_priority(long long prio)
+{
+	if (prio < 2)
+		return -1;
+	struct proc *p = curr_proc();
+	p->priority = prio;
+	return prio;
+}
+
+
+int spawn(char *name)
+{
+	int id = get_id_by_name(name);
+	if (id < 0)
+			return -1;
+	struct proc *np = allocproc();
+	if (np == 0)
+			return -1;
+	struct proc *p = curr_proc();
+	np->parent = p;
+	if (loader(id, np) < 0) {
+			freeproc(np);
+			return -1;
+	}
+	add_task(np);
+	return np->pid;
 }
 
 int fork()

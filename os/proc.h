@@ -44,6 +44,8 @@ struct proc {
 	uint64 max_page;
 	struct proc *parent; // Parent process
 	uint64 exit_code;
+	uint64 stride;
+	uint64 priority;
 	struct file *files[FD_BUFFER_SIZE];
 };
 
@@ -63,5 +65,7 @@ struct proc *allocproc();
 int fdalloc(struct file *);
 // swtch.S
 void swtch(struct context *, struct context *);
+int spawn(char *name);
+int set_priority(long long prio);
 
 #endif // PROC_H
