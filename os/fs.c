@@ -114,6 +114,7 @@ struct inode *ialloc(uint dev, short type)
 		if (dip->type == 0) { // a free inode
 			memset(dip, 0, sizeof(*dip));
 			dip->type = type;
+			dip->nlink = 1;
 			bwrite(bp);
 			brelse(bp);
 			return iget(dev, inum);
@@ -137,6 +138,7 @@ void iupdate(struct inode *ip)
 	dip->type = ip->type;
 	dip->size = ip->size;
 	// LAB4: you may need to update link count here
+	dip->nlink = ip->nlink;
 	memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
 	bwrite(bp);
 	brelse(bp);
@@ -190,6 +192,7 @@ void ivalid(struct inode *ip)
 		ip->type = dip->type;
 		ip->size = dip->size;
 		// LAB4: You may need to get lint count here
+		ip->nlink = dip->nlink;
 		memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
 		brelse(bp);
 		ip->valid = 1;
@@ -208,7 +211,8 @@ void ivalid(struct inode *ip)
 void iput(struct inode *ip)
 {
 	// LAB4: Unmark the condition and change link count variable name (nlink) if needed
-	if (ip->ref == 1 && ip->valid && 0 /*&& ip->nlink == 0*/) {
+
+	if (ip->ref == 1 && ip->valid && ip->nlink == 0) {
 		// inode has no links and no other references: truncate and free.
 		itrunc(ip);
 		ip->type = 0;
@@ -451,4 +455,83 @@ struct inode *namei(char *path)
 	if (dp == 0)
 		panic("fs dumped.\n");
 	return dirlookup(dp, path + skip, 0);
+}
+
+
+int sys_linkat_helper(char *oldpath, char *newpath)
+{
+        // Can't link a file to itself (same name)
+        if (strncmp(oldpath, newpath, DIRSIZ) == 0)
+                return -1;
+
+        struct inode *ip = namei(oldpath);
+        if (ip == 0)
+                return -1;
+
+        ivalid(ip);
+
+        struct inode *dp = root_dir();
+        if (dp == 0) {
+                iput(ip);
+                return -1;
+        }
+
+        // Add new dirent pointing to the same inum
+        if (dirlink(dp, newpath, ip->inum) < 0) {
+                iput(dp);
+                iput(ip);
+                return -1;
+        }
+
+        // Increment link count
+        ip->nlink++;
+        iupdate(ip);
+
+        iput(dp);
+        iput(ip);
+        return 0;
+}
+
+//unlinkat helper — remove dirent named path. decrement nlink; delete if nlink==0
+int sys_unlinkat_helper(char *path)
+{
+        struct inode *dp = root_dir();
+        if (dp == 0)
+                return -1;
+
+        uint off;
+        struct dirent de;
+        uint inum = 0;
+        uint found_off = 0;
+
+        // Find matching dirent in root dir
+        for (off = 0; off < dp->size; off += sizeof(de)) {
+                if (readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+                        panic("unlinkat: readi");
+                if (de.inum != 0 && strncmp(path, de.name, DIRSIZ) == 0) {
+                        inum = de.inum;
+                        found_off = off;
+                        break;
+                }
+        }
+
+        if (inum == 0) {
+                iput(dp);
+                return -1;
+        }
+
+        // Zero out the dirent
+        memset(&de, 0, sizeof(de));
+        if (writei(dp, 0, (uint64)&de, found_off, sizeof(de)) != sizeof(de))
+                panic("unlinkat: writei");
+        iput(dp);
+
+        // Decrement link count on inode; if it hits 0, iput will free it
+        struct inode *ip = iget(ROOTDEV, inum);
+        ivalid(ip);
+        ip->nlink--;
+        iupdate(ip);
+        iput(ip);
+
+        return 0;
 }

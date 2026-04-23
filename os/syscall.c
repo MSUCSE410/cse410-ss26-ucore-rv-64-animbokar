@@ -5,6 +5,10 @@
 #include "syscall_ids.h"
 #include "timer.h"
 #include "trap.h"
+#include "file.h"
+#include "fs.h"
+#include "proc.h"
+#include "string.h"
 
 uint64 console_write(uint64 va, uint64 len)
 {
@@ -177,19 +181,52 @@ uint64 sys_close(int fd)
 	return 0;
 }
 
-int sys_fstat(int fd,uint64 stat){
-	//TODO: your job is to complete the syscall
-	return -1;
+int sys_fstat(int fd, uint64 stat)
+{
+	if (fd < 0 || fd >= FD_BUFFER_SIZE)
+		return -1;
+	struct proc *p = curr_proc();
+	struct file *f = p->files[fd];
+	if (f == NULL || f->type != FD_INODE)
+		return -1;
+
+	Stat st;
+	memset(&st, 0, sizeof(st));
+
+	ivalid(f->ip);
+	st.dev = 0;
+	st.ino = f->ip->inum;
+	st.nlink = f->ip->nlink;
+	if (f->ip->type == T_DIR)
+		st.mode = DIR;
+	else if (f->ip->type == T_FILE)
+		st.mode = FILE;
+	else
+		st.mode = 0;
+
+	if (copyout(p->pagetable, stat, (char *)&st, sizeof(st)) < 0)
+			return -1;
+	return 0;
 }
 
 int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint64 flags){
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+        char old[200], new[200];
+        if (copyinstr(p->pagetable, old, oldpath, 200) < 0)
+            return -1;
+        if (copyinstr(p->pagetable, new, newpath, 200) < 0)
+            return -1;
+        return sys_linkat_helper(old, new);
 }
 
 int sys_unlinkat(int dirfd, uint64 name, uint64 flags){
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+        char path[200];
+        if (copyinstr(p->pagetable, path, name, 200) < 0)
+            return -1;
+        return sys_unlinkat_helper(path);
 }
 
 extern char trap_page[];
@@ -247,6 +284,7 @@ void syscall()
 		break;
 	case SYS_unlinkat:
 	    ret = sys_unlinkat(args[0],args[1],args[2]);
+		break ; 
 	case SYS_spawn:
 		ret = sys_spawn(args[0]);
 		break;
