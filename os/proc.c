@@ -52,6 +52,8 @@ int allocpid()
 
 struct proc *fetch_task()
 {
+	// Pop the index of the next runnable process from the scheduler queue.
+    // Returns -1 if the queue is empty (no process is ready to run).
 	int index = pop_queue(&task_queue);
 	if (index < 0) {
 		debugf("No task to fetch\n");
