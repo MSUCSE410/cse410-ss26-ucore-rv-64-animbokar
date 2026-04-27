@@ -180,7 +180,14 @@ uint64 sys_close(int fd)
 	p->files[fd] = 0;
 	return 0;
 }
-
+/*
+ * sys_fstat - Fill in a Stat struct with metadata about an open file.
+ * Returns the file's inode number, type (DIR or FILE), and nlink count.
+ * Params from user space:
+ *   fd   - file descriptor of an open file
+ *   stat - pointer to a user-space Stat struct to fill in
+ * Returns 0 on success, -1 if fd is invalid or copyout fails.
+ */
 int sys_fstat(int fd, uint64 stat)
 {
 	if (fd < 0 || fd >= FD_BUFFER_SIZE)
@@ -208,7 +215,20 @@ int sys_fstat(int fd, uint64 stat)
 			return -1;
 	return 0;
 }
-
+/*
+ * sys_linkat - Create a hard link: make 'newpath' another name for 'oldpath'.
+ *
+ * After this, both oldpath and newpath refer to the SAME inode (same file data,
+ * same metadata). The file's nlink count goes up by 1.
+ *
+ * Params from user space:
+ *   olddirfd, newdirfd - directory fds, ignored here (always AT_FDCWD = -100)
+ *   oldpath  - pointer to existing file name (in user memory)
+ *   newpath  - pointer to new name to create (in user memory)
+ *   flags    - ignored (always 0 in this project)
+ *
+ * Returns 0 on success, -1 on error.
+ */
 int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint64 flags){
 	//TODO: your job is to complete the syscall
 	struct proc *p = curr_proc();
@@ -219,7 +239,15 @@ int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath, uint6
             return -1;
         return sys_linkat_helper(old, new);
 }
-
+/*
+ * sys_unlinkat - Remove the directory entry named 'path', decrement that file's
+ *                nlink. If nlink hits 0 (no names left), the file is deleted.
+ * Params from user space:
+ *   dirfd - ignored (always AT_FDCWD = -100)
+ *   name  - pointer to the name to remove (in user memory)
+ *   flags - ignored (always 0)
+ * Returns 0 on success, -1 if the file doesn't exist.
+ */
 int sys_unlinkat(int dirfd, uint64 name, uint64 flags){
 	//TODO: your job is to complete the syscall
 	struct proc *p = curr_proc();

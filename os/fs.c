@@ -211,7 +211,7 @@ void ivalid(struct inode *ip)
 void iput(struct inode *ip)
 {
 	// LAB4: Unmark the condition and change link count variable name (nlink) if needed
-
+	//end link if 0 deletes file
 	if (ip->ref == 1 && ip->valid && ip->nlink == 0) {
 		// inode has no links and no other references: truncate and free.
 		itrunc(ip);
@@ -457,6 +457,10 @@ struct inode *namei(char *path)
 	return dirlookup(dp, path + skip, 0);
 }
 
+/*
+ * sys_linkat_helper - The actual work of linking: adds a new directory entry
+ *                     pointing to an existing file's inode, and bumps nlink.
+ */
 
 int sys_linkat_helper(char *oldpath, char *newpath)
 {
